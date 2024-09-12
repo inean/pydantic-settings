@@ -281,6 +281,164 @@ def test_nested_env_delimiter(env):
     }
 
 
+def test_nested_env_delimiter_list(env):
+    class SubSubValue(BaseSettings):
+        v6: str
+
+    class SubValue(BaseSettings):
+        v4: str
+        v5: int
+        sub_sub: SubSubValue
+
+    class TopValue(BaseSettings):
+        v1: str
+        v2: str
+        v3: str
+        sub: SubValue
+
+    class Cfg(BaseSettings):
+        top_collection: List[TopValue]
+
+        model_config = SettingsConfigDict(env_nested_delimiter='__')
+
+    env.set(
+        'top_collection',
+        '[{"v1": "json-1", "v2": "json-2", "sub": { "v5": "xx"}}]',
+    )
+
+    env.set('top_collection__0__sub__v5', '5')
+    env.set('top_collection__0__v2', '2')
+    env.set('top_collection__0__v3', '3')
+    env.set('top_collection__0__sub__sub_sub__v6', '6')
+    env.set('top_collection__0__sub__v4', '4')
+
+    cfg = Cfg()
+    assert cfg.model_dump() == {
+        'top_collection': [
+            {
+                'v1': 'json-1',
+                'v2': '2',
+                'v3': '3',
+                'sub': {'v4': '4', 'v5': 5, 'sub_sub': {'v6': '6'}},
+            }
+        ],
+    }
+
+
+class ListTopValue(BaseSettings):
+    v1: Optional[str] = None
+    v2: int
+
+
+class ListCfgSimple(BaseSettings):
+    top_list: List[int]
+
+    model_config = SettingsConfigDict(env_nested_delimiter='__')
+
+
+class ListCfgComplex(BaseSettings):
+    top_collection: List[List[ListTopValue]]
+
+    model_config = SettingsConfigDict(env_nested_delimiter='__')
+
+
+def test_nested_env_delimiter_lists_insert_simple(env):
+    env.set('top_list__0', '1')
+
+    cfg = ListCfgSimple()
+    assert cfg.model_dump() == {'top_list': [1]}
+
+
+def test_nested_env_delimiter_lists_insert_complex(env):
+    env.set('top_collection__0__0__v2', '1')
+
+    cfg = ListCfgComplex()
+    assert cfg.model_dump() == {'top_collection': [[{'v1': None, 'v2': 1}]]}
+
+
+def test_nested_env_delimiter_lists_append_simple(env):
+    env.set('top_list__0', '1')
+    env.set('top_list__1', '2')
+
+    cfg = ListCfgSimple()
+    assert cfg.model_dump() == {'top_list': [1, 2]}
+
+
+def test_nested_env_delimiter_lists_append_complex(env):
+    env.set('top_collection__0__0__v2', '1')
+    env.set('top_collection__1__0__v2', '2')
+
+    cfg = ListCfgComplex()
+    assert cfg.model_dump() == {
+        'top_collection': [
+            [{'v1': None, 'v2': 1}],
+            [{'v1': None, 'v2': 2}],
+        ],
+    }
+
+
+def test_nested_env_delimiter_lists_insert_simple_out_of_bounds(env):
+    env.set('top_list', '[1]')
+    env.set('top_list__2', '3')
+
+    cfg = ListCfgSimple()
+    assert cfg.model_dump() == {'top_list': [1]}
+
+
+def test_nested_env_delimiter_lists_append_complex_out_of_bounds(env):
+    env.set('top_collection', '[[{"v2": "1"}]]')
+    env.set('top_collection__0__2__v2', '2')
+    env.set('top_collection__2__0__v2', '3')
+
+    cfg = ListCfgComplex()
+    assert cfg.model_dump() == {'top_collection': [[{'v1': None, 'v2': 1}]]}
+
+
+def test_nested_env_delimiter_lists_update_simple(env):
+    env.set('top_list__0', '1')
+    env.set('top_list__0', '2')
+
+    cfg = ListCfgSimple()
+    assert cfg.model_dump() == {'top_list': [2]}
+
+
+def test_nested_env_delimiter_lists_update_complex(env):
+    env.set('top_collection__0__0__v2', '1')
+    env.set('top_collection__0__0__v2', '2')
+
+    cfg = ListCfgComplex()
+    assert cfg.model_dump() == {'top_collection': [[{'v1': None, 'v2': 2}]]}
+
+
+def test_nested_env_delimiter_lists_simple(env):
+    env.set('top_list__0', '3')
+    env.set('top_list__1', '2')
+    env.set('top_list__2', '1')
+    env.set('top_list__5', 'out of bounds index')
+    env.set('top_list', '[1]')
+
+    cfg = ListCfgSimple()
+    assert cfg.model_dump() == {'top_list': [3, 2, 1]}
+
+
+def test_nested_env_delimiter_lists_complex(env):
+    env.set('top_collection', '[[{"v1": "json-1", "v2": "json-2"}]]')
+    env.set('top_collection__0__0__v1', 'json-1')
+    env.set('top_collection__0__1__v2', '6')
+    env.set('top_collection__0__0__v2', '5')
+    env.set('top_collection__0__3__v1', 'out of bounds index')
+
+    cfg = ListCfgComplex()
+    assert cfg.model_dump() == {
+        'top_collection': [
+            [
+                {'v1': 'json-1', 'v2': 5},
+                {'v1': None, 'v2': 6},
+            ]
+        ],
+    }
+
+
 def test_nested_env_optional_json(env):
     class Child(BaseModel):
         num_list: Optional[List[int]] = None
